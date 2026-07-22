@@ -1,5 +1,9 @@
 #Imports
-from IPython.display import display
+try:
+    from IPython.display import display
+except ImportError:
+    def display(value):
+        print(value)
 from pathlib import Path
 import sys
 

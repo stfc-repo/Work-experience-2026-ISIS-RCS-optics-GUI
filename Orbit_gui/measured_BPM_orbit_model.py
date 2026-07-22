@@ -69,7 +69,11 @@ else:
     print("error_orbit_snapshot creation skipped because RUN_FULL_MODEL is False.")
 
 import matplotlib.pyplot as plt
-from IPython.display import display
+try:
+    from IPython.display import display
+except ImportError:
+    def display(value):
+        print(value)
 
 
 if RUN_FULL_MODEL:
