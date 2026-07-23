@@ -179,7 +179,8 @@ def get_orbit_snapshot(key):
                 ["r0vd1_kick", "r3vd1_kick", "r5vd1_kick", "r9vd1_kick"],
             )
             correction_snapshot_config = copy_snapshot_config(
-                base_snapshot_config,
+                #base_snapshot_config,
+                orbit_base_config,
                 snapshot_id="student_error_table_orbit_correction",
                 label="Error-table orbit correction snapshot",
                 error_table_paths=[str(error_table_path)] if error_table_path.exists() else [],
@@ -376,4 +377,4 @@ elif orbit_mode == "Measured":
         st.line_chart(chart_df)
 
 
-#RUN THIS VIA cd C:\Users\Visitor\Desktop\Work-experience-2026-ISIS-RCS-optics-GUI && python -m streamlit run Orbit_gui/streamlit_gui.py, in your gitbash!
+#RUN THIS VIA cd C:\Users\Visitor\Desktop\i/streamlit_gui.py, in your gitbashWork-experience-2026-ISIS-RCS-optics-GUI && python -m streamlit run Orbit_gu!
