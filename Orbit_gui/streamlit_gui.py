@@ -1,4 +1,5 @@
 # Imports
+import colorsys
 import sys
 from pathlib import Path
 
@@ -15,6 +16,14 @@ if not (repo_root / "Dev" / "12_IO").is_dir():
     elif (repo_root / "Dev" / "12_IO").is_dir():
         pass
 
+orbit_gui_path = repo_root / "Orbit_gui"
+if str(orbit_gui_path) not in sys.path:
+    sys.path.insert(0, str(orbit_gui_path))
+
+from nominal_orbit_model import repo_root as guide_repo_root, orbit_base_config
+if guide_repo_root is not None:
+    repo_root = guide_repo_root
+
 src_path = repo_root / "src"
 if src_path.is_dir() and str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
@@ -26,46 +35,121 @@ from optics_gui.orbit_correction import (
     plot_orbit_with_bpm,
 )
 from optics_gui.snapshot import (
-    SnapshotConfig,
     SnapshotOrbitCorrectionConfig,
     build_machine_snapshot,
     copy_snapshot_config,
 )
 
+
+def build_theme(hue):
+    return {
+        "accent": f"hsl({hue}, 80%, 45%)",
+        "accent_soft": f"hsl({hue}, 70%, 92%)",
+        "text": "#1f2937",
+        "background": "#f8fafc",
+    }
+
+
+def apply_theme_css(theme):
+    st.markdown(
+        f"""
+        <style>
+        .stApp {{ background: {theme['background']}; color: {theme['text']}; }}
+        div[data-testid="stSidebar"] {{ background: {theme['accent_soft']}; }}
+        .stButton > button, .stSelectbox > div > div, .stSlider > div > div {{ border-color: {theme['accent']}; }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 st.set_page_config(page_title="Orbit GUI", layout="wide")
 st.title("Orbit GUI")
 
-# Model configuration
-lattice_folder = repo_root / "Dev" / "Lattice_Files" / "00_Simplified_Lattice"
 error_table_path = repo_root / "Dev" / "Error_Tables" / "jan26_survey_corrected.tfs"
-output_dir = repo_root / "Dev" / "12_IO" / "student_runs" / "orbit"
-
-base_snapshot_config = SnapshotConfig(
-    cycle_time_ms=0.0,
-    label="student_orbit_gui",
-    case="nominal",
-    snapshot_id="student_orbit_gui",
-    lattice_folder=str(lattice_folder),
-    output_dir=str(output_dir),
-    run_envelope=False,
-    run_aperture=False,
-)
 
 nominal_snapshot_config = copy_snapshot_config(
-    base_snapshot_config,
+    orbit_base_config,
     snapshot_id="student_nominal_orbit",
     label="Nominal orbit snapshot",
     error_table_paths=[],
     orbit_correction_configs=[],
+    run_envelope=False,
+    run_aperture=False,
 )
 
 error_snapshot_config = copy_snapshot_config(
-    base_snapshot_config,
+    orbit_base_config,
     snapshot_id="student_error_table_orbit",
     label="Error-table orbit snapshot",
     error_table_paths=[str(error_table_path)] if error_table_path.exists() else [],
     orbit_correction_configs=[],
+    run_envelope=False,
+    run_aperture=False,
 )
+
+
+@st.cache_resource(show_spinner="Running MAD-X model for nominal orbit...")
+def get_nominal_orbit_snapshot(cycle_time_ms, requested_qx, requested_qy):
+    config = copy_snapshot_config(
+        orbit_base_config,
+        snapshot_id="gui_nominal_orbit",
+        label="GUI nominal orbit",
+        cycle_time_ms=cycle_time_ms,
+        requested_qx=requested_qx,
+        requested_qy=requested_qy,
+        error_table_paths=[],
+        orbit_correction_configs=[],
+        run_envelope=False,
+        run_aperture=False,
+    )
+    return build_machine_snapshot(config)
+
+
+@st.cache_resource(show_spinner="Running MAD-X model with error table...")
+def get_error_table_orbit_snapshot(cycle_time_ms, requested_qx, requested_qy):
+    config = copy_snapshot_config(
+        orbit_base_config,
+        snapshot_id="gui_error_table_orbit",
+        label="GUI error-table orbit",
+        cycle_time_ms=cycle_time_ms,
+        requested_qx=requested_qx,
+        requested_qy=requested_qy,
+        error_table_paths=[str(error_table_path)] if error_table_path.exists() else [],
+        orbit_correction_configs=[],
+        run_envelope=False,
+        run_aperture=False,
+    )
+    return build_machine_snapshot(config)
+
+
+@st.cache_resource(show_spinner="Sampling BPMs from the model orbit...")
+def get_measured_bpm_table(cycle_time_ms, requested_qx, requested_qy, plane="H"):
+    snapshot = get_nominal_orbit_snapshot(cycle_time_ms, requested_qx, requested_qy)
+    bpm_table = bpm_measurements_from_twiss(snapshot.table("twiss"), plane=plane).head(8).copy()
+    example_offsets_mm = [0.8, -0.6, 1.1, -0.9, 0.4, -0.3, 0.7, -0.5]
+    bpm_table["closed_orbit_mm"] = example_offsets_mm[: len(bpm_table)]
+    return bpm_table
+
+
+def get_editable_data_editor():
+    return getattr(st, "data_editor", None) or getattr(st, "experimental_data_editor", None)
+
+
+def editable_bpm_table(bpm_table, key):
+    data_editor = get_editable_data_editor()
+    if data_editor is None:
+        st.warning("Streamlit version does not support editable BPM tables. Showing a static table instead.")
+        st.dataframe(bpm_table, width="stretch")
+        return bpm_table
+
+    edited = data_editor(
+        bpm_table,
+        key=key,
+        num_rows="fixed",
+        use_container_width=True,
+    )
+    return edited
 
 
 def select_correctors_for_demo(plane, names):
@@ -203,18 +287,57 @@ def display_correction_results(snapshot):
 
 
 with st.sidebar:
-    st.header("Orbit GUI controls")
+    st.header("Appearance")
+    theme_hue = st.slider(
+        "Theme colour",
+        min_value=0,
+        max_value=360,
+        value=210,
+        help="Pick an accent hue (0-360 on the colour wheel) for the whole page.",
+    )
+    theme = build_theme(theme_hue)
+    apply_theme_css(theme)
+
+    st.header("Machine settings")
+    cycle_time_ms = st.slider(
+        "Cycle time [ms]",
+        min_value=0.0,
+        max_value=10.0,
+        value=0.0,
+        step=0.1,
+        help="Time through the RCS acceleration cycle (0-10 ms).",
+    )
+    requested_qx = st.number_input(
+        "Set Qx (horizontal tune)",
+        value=4.31,
+        step=0.01,
+        format="%.3f",
+    )
+    requested_qy = st.number_input(
+        "Set Qy (vertical tune)",
+        value=3.83,
+        step=0.01,
+        format="%.3f",
+    )
+
+    st.header("Orbit source")
     orbit_mode = st.selectbox(
         "Select orbit source mode",
-        ["Nominal", "Error Table", "Measured BPMs"],
+        ["Nominal", "Error Table", "Measured"],
     )
     enable_correction = st.checkbox("Show correction suggestions", value=True)
+    bpm_plane = st.selectbox("Measured BPM plane", ["H", "V"], index=0)
+    show_only_enabled_bpm = st.checkbox("Plot only enabled BPMs", value=True)
+    show_bpm_editor = st.checkbox("Show editable BPM table", value=True)
 
-st.write("This GUI displays the nominal orbit, the error-table orbit, and a simple measured BPM orbit example. The error-table mode can also show read-only correction suggestions using the packaged optics backend.")
+st.write(
+    "This GUI displays the nominal orbit, the error-table orbit, and a simple measured BPM orbit example. "
+    "The error-table mode can also show read-only correction suggestions using the packaged optics backend."
+)
 
 try:
-    nominal_snapshot = get_orbit_snapshot("nominal")
-    error_snapshot = get_orbit_snapshot("error")
+    nominal_snapshot = get_nominal_orbit_snapshot(cycle_time_ms, requested_qx, requested_qy)
+    error_snapshot = get_error_table_orbit_snapshot(cycle_time_ms, requested_qx, requested_qy)
 except Exception as exc:
     st.error(f"Failed to build base orbit snapshots: {exc}")
     raise
@@ -233,15 +356,24 @@ elif orbit_mode == "Error Table":
             display_correction_results(correction_snapshot)
         except Exception as exc:
             st.error(f"Failed to build orbit correction snapshot: {exc}")
-elif orbit_mode == "Measured BPMs":
+elif orbit_mode == "Measured":
     st.subheader("Measured BPM orbit example")
-    measured_bpm = bpm_measurements_from_twiss(error_snapshot.table("twiss"), plane="H").head(12)
-    measured_bpm["closed_orbit_mm"] = measured_bpm["closed_orbit_mm"].round(3)
-    st.dataframe(measured_bpm, width="stretch")
-    if not measured_bpm.empty:
+    measured_bpm = get_measured_bpm_table(cycle_time_ms, requested_qx, requested_qy, plane=bpm_plane)
+    if show_bpm_editor:
+        measured_bpm = editable_bpm_table(measured_bpm, key="measured_bpm_table")
+    else:
+        st.dataframe(measured_bpm, width="stretch")
+
+    if show_only_enabled_bpm:
+        measured_bpm = measured_bpm[measured_bpm["enabled"]].copy()
+
+    if measured_bpm.empty:
+        st.warning("No enabled BPM measurements are available.")
+    else:
+        st.dataframe(measured_bpm, width="stretch")
         chart_df = measured_bpm.set_index("s")["closed_orbit_mm"].copy()
         chart_df.index.name = "s"
         st.line_chart(chart_df)
 
 
-#RUN THIS VIA $ cd C:\Users\Visitor\Desktop\Work-experience-2026-ISIS-RCS-optics-GUI, in your gitbash!
+#RUN THIS VIA cd C:\Users\Visitor\Desktop\Work-experience-2026-ISIS-RCS-optics-GUI && python -m streamlit run Orbit_gui/streamlit_gui.py, in your gitbash!
