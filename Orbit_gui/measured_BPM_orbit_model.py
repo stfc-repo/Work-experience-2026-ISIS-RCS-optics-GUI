@@ -87,3 +87,5 @@ if RUN_FULL_MODEL:
 else:
     jan26_bpm_match = measured_bpm_table.copy()
     print("Jan26 BPM sampling plot skipped because RUN_FULL_MODEL is False.")
+
+plt.show()
