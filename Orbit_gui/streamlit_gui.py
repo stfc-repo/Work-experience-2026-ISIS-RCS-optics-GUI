@@ -43,11 +43,12 @@ from optics_gui.snapshot import (
 
 def build_theme(hue):
     return {
-        "accent": f"hsl({hue}, 80%, 45%)",
-        "accent_soft": f"hsl({hue}, 70%, 92%)",
+        "accent": f"hsl({hue}, 70%, 55%)",
+        "accent_soft": f"hsl({hue}, 55%, 60%)",   # much more saturated/vivid, was 70%, 92%
         "text": "#1f2937",
-        "background": "#f8fafc",
+        "background": f"hsl({hue}, 50%, 85%)",     # now actually tied to hue, was a fixed hex
     }
+
 
 
 def apply_theme_css(theme):
@@ -55,7 +56,7 @@ def apply_theme_css(theme):
         f"""
         <style>
         .stApp {{ background: {theme['background']}; color: {theme['text']}; }}
-        div[data-testid="stSidebar"] {{ background: {theme['accent_soft']}; }}
+        section[data-testid="stSidebar"] {{ background: {theme['accent_soft']}; }}
         .stButton > button, .stSelectbox > div > div, .stSlider > div > div {{ border-color: {theme['accent']}; }}
         </style>
         """,
@@ -179,7 +180,6 @@ def get_orbit_snapshot(key):
                 ["r0vd1_kick", "r3vd1_kick", "r5vd1_kick", "r9vd1_kick"],
             )
             correction_snapshot_config = copy_snapshot_config(
-                #base_snapshot_config,
                 orbit_base_config,
                 snapshot_id="student_error_table_orbit_correction",
                 label="Error-table orbit correction snapshot",
@@ -377,4 +377,4 @@ elif orbit_mode == "Measured":
         st.line_chart(chart_df)
 
 
-#RUN THIS VIA cd C:\Users\Visitor\Desktop\i/streamlit_gui.py, in your gitbashWork-experience-2026-ISIS-RCS-optics-GUI && python -m streamlit run Orbit_gu!
+#RUN THIS VIA navigating to Work-experience-2026-ISIS-RCS-optics-GUI and running python -m streamlit run Orbit_gui/streamlit_gui.py
