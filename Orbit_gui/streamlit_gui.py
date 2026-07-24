@@ -41,28 +41,53 @@ from optics_gui.snapshot import (
 )
 
 
-def build_theme(hue):
-    return {
-        "accent": f"hsl({hue}, 70%, 55%)",
-        "accent_soft": f"hsl({hue}, 55%, 60%)",   # much more saturated/vivid, was 70%, 92%
-        "text": "#1f2937",
-        "background": f"hsl({hue}, 50%, 85%)",     # now actually tied to hue, was a fixed hex
-    }
+def build_theme(hue, eyestrain_filter=False):
+    if eyestrain_filter:
+        # Shift hue away from blue toward warm tones, cap saturation and brightness
+        warm_hue = hue if hue < 60 or hue > 300 else 30  # push blues/greens toward orange
+        return {
+            "accent": f"hsl({warm_hue}, 45%, 38%)",
+            "accent_soft": f"hsl({warm_hue}, 35%, 82%)",
+            "text": "#3a3226",
+            "background": "#f2ede3",  # warm off-white instead of cool white
+        }
+    else:
+        return {
+            "accent": f"hsl({hue}, 70%, 55%)",
+            "accent_soft": f"hsl({hue}, 55%, 70%)",   # much more saturated/vivid, was 70%, 92%
+            "text": "#1f2937",
+            "background": f"hsl({hue}, 50%, 85%)",     # now actually tied to hue, was a fixed hex
+        }
 
 
+def apply_theme_css(theme, eyestrain_filter=False, overlay_strength=0.15):
+    dim_filter = "brightness(0.92) sepia(0.08)" if eyestrain_filter else "none"
+    overlay_opacity = overlay_strength if eyestrain_filter else 0.0   # <-- was missing
 
-def apply_theme_css(theme):
     st.markdown(
         f"""
         <style>
-        .stApp {{ background: {theme['background']}; color: {theme['text']}; }}
-        section[data-testid="stSidebar"] {{ background: {theme['accent_soft']}; }}
+        .stApp {{
+            background: {theme['background']} !important;
+            color: {theme['text']} !important;
+            filter: {dim_filter};
+        }}
+        section[data-testid="stSidebar"] {{ background: {theme['accent_soft']} !important; }}
         .stButton > button, .stSelectbox > div > div, .stSlider > div > div {{ border-color: {theme['accent']}; }}
+        #eyestrain-overlay {{
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background: rgba(40, 25, 10, {overlay_opacity});
+            pointer-events: none;
+            z-index: 999999;
+            transition: background 0.2s ease;
+        }}
         </style>
+        <div id="eyestrain-overlay"></div>
         """,
         unsafe_allow_html=True,
     )
-
 
 st.set_page_config(page_title="Orbit GUI", layout="wide")
 st.title("Orbit GUI")
@@ -296,8 +321,28 @@ with st.sidebar:
         value=210,
         help="Pick an accent hue (0-360 on the colour wheel) for the whole page.",
     )
-    theme = build_theme(theme_hue)
-    apply_theme_css(theme)
+
+    eyestrain_filter = st.checkbox(
+        "Eyestrain filter (reduce blue light / brightness)",
+        value=False,
+        help="Warms the colour palette and softens contrast to reduce eye strain.",
+    )
+    if eyestrain_filter:
+        overlay_strength = st.slider(
+            "Dimming strength",
+            min_value=0.0,
+            max_value=0.5,
+            value=0.15,
+            step=0.05,
+            help="How dark the page overlay is when the eyestrain filter is on.",
+        )
+    else:
+        overlay_strength = 0.15  # default kept in memory for when it's re-enabled
+        
+    theme = build_theme(theme_hue, eyestrain_filter)
+    apply_theme_css(theme, eyestrain_filter, overlay_strength)
+
+        
 
     st.header("Machine settings")
     cycle_time_ms = st.slider(
@@ -377,4 +422,5 @@ elif orbit_mode == "Measured":
         st.line_chart(chart_df)
 
 
-#RUN THIS VIA navigating to Work-experience-2026-ISIS-RCS-optics-GUI and running python -m streamlit run Orbit_gui/streamlit_gui.py
+#RUN THIS VIA navigating to and running python -m streamlit run Orbit_gui/streamlit_gui.py
+# cd desktop/Work-experience-2026-ISIS-RCS-optics-GUI && python -m streamlit run Orbit_gui/streamlit_gui.py
